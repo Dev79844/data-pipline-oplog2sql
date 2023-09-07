@@ -15,13 +15,26 @@ type OplogEntry struct{
 	Op	string					`json:"op"`
 	NS	string					`json:"ns"`
 	O	map[string]interface{}	`json:"o"`
+	O2	map[string]interface{}	`json:"o2"`
 }
 
-func GenerateInsertSQL(oplog string) (string,error){
+func GenerateSQL(oplog string) (string,error){
 	var oplogObj OplogEntry
 	if err := json.Unmarshal([]byte(oplog), &oplogObj); err!=nil{
 		return "",err
 	}
+
+	switch oplogObj.Op{
+	case "i":
+		return generateInsertSQL(oplogObj)
+	case "u":
+		return generateUpdateSQL(oplogObj)
+	}
+
+	return "",fmt.Errorf("invalid oplog")
+}
+
+func generateInsertSQL(oplogObj OplogEntry) (string,error){
 
 	switch oplogObj.Op{
 	case "i":
@@ -48,6 +61,50 @@ func GenerateInsertSQL(oplog string) (string,error){
 
 	return "",nil
 }
+
+func generateUpdateSQL(oplogObj OplogEntry) (string, error) {
+	switch oplogObj.Op {
+	case "u":
+		sql := fmt.Sprintf("UPDATE %s SET", oplogObj.NS)
+
+		diffMap, ok := oplogObj.O["diff"].(map[string]interface{})
+		if !ok {
+			return "", fmt.Errorf("invalid oplog")
+		}
+
+		if setMap, ok := diffMap["u"].(map[string]interface{}); ok {
+			columnValues := make([]string, 0, len(setMap))
+			for columnName, value := range setMap {
+				columnValues = append(columnValues, fmt.Sprintf("%s = %s", columnName, getColumnValue(value)))
+			}
+			sort.Strings(columnValues)
+
+			sql = fmt.Sprintf("%s %s", sql, strings.Join(columnValues, ", "))
+		} else if unsetMap, ok := diffMap["d"].(map[string]interface{}); ok {
+			columnValues := make([]string, 0, len(unsetMap))
+			for columnName := range unsetMap {
+				columnValues = append(columnValues, fmt.Sprintf("%s = NULL", columnName))
+			}
+			sort.Strings(columnValues)
+
+			sql = fmt.Sprintf("%s %s", sql, strings.Join(columnValues, ", "))
+		} else {
+			return "", fmt.Errorf("invalid oplog")
+		}
+
+		whereColumnValues := make([]string, 0, len(oplogObj.O2))
+		for columnName, value := range oplogObj.O2 {
+			whereColumnValues = append(whereColumnValues, fmt.Sprintf("%s = %s", columnName, getColumnValue(value)))
+		}
+
+		sql = fmt.Sprintf("%s WHERE %s;", sql, strings.Join(whereColumnValues, " AND "))
+
+		return sql, nil
+	}
+
+	return "", fmt.Errorf("invalid oplog")
+}
+
 
 func getColumnValue(value interface{}) string{
 	switch value.(type){

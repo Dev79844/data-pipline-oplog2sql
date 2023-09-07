@@ -31,16 +31,77 @@ func TestGenerateInsertSQL(t *testing.T) {
 			  want: "INSERT INTO test.student (_id, date_of_birth, is_graduated, name, roll_no) VALUES ('635b79e231d82a8ab1de863b', '2000-01-30', false, 'Selena Miller', 51);",
 			  wantErr: false,
 		},
+		{
+			name: "Update Operation - set",
+			oplog: `{
+				"op": "u",
+				"ns": "test.student",
+				"o": {
+				   "$v": 2,
+				   "diff": {
+					  "u": {
+						 "is_graduated": true
+					  }
+				   }
+				},
+				 "o2": {
+				   "_id": "635b79e231d82a8ab1de863b"
+				}
+			 }`,
+			  want: "UPDATE test.student SET is_graduated = true WHERE _id = '635b79e231d82a8ab1de863b';",
+			  wantErr: false,
+		},
+		{
+			name: "Update Operation - set with multiple columns",
+			oplog: `{
+				"op": "u",
+				"ns": "test.student",
+				"o": {
+				   "$v": 2,
+				   "diff": {
+					  "u": {
+						 "is_graduated": true,
+						 "roll_no":103
+					  }
+				   }
+				},
+				 "o2": {
+				   "_id": "635b79e231d82a8ab1de863b"
+				}
+			 }`,
+			  want: "UPDATE test.student SET is_graduated = true, roll_no = 103 WHERE _id = '635b79e231d82a8ab1de863b';",
+			  wantErr: false,
+		},
+		{
+			name: "Update Operation - unset",
+			oplog: `{
+				"op": "u",
+				"ns": "test.student",
+				"o": {
+				   "$v": 2,
+				   "diff": {
+					  "d": {
+						 "roll_no": false
+					  }
+				   }
+				},
+				"o2": {
+				   "_id": "635b79e231d82a8ab1de863b"
+				}
+			 }`,
+			  want: "UPDATE test.student SET roll_no = NULL WHERE _id = '635b79e231d82a8ab1de863b';",
+			  wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateInsertSQL(tt.oplog)
+			got, err := GenerateSQL(tt.oplog)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("GenerateInsertSQL() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("GenerateSQL() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("GenerateInsertSQL() = %v, want %v", got, tt.want)
+				t.Errorf("GenerateSQL() = %v, want %v", got, tt.want)
 			}
 		})
 	}
