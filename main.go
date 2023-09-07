@@ -29,6 +29,8 @@ func GenerateSQL(oplog string) (string,error){
 		return generateInsertSQL(oplogObj)
 	case "u":
 		return generateUpdateSQL(oplogObj)
+	case "d":
+		return generateDeleteSQL(oplogObj)
 	}
 
 	return "",fmt.Errorf("invalid oplog")
@@ -103,6 +105,24 @@ func generateUpdateSQL(oplogObj OplogEntry) (string, error) {
 	}
 
 	return "", fmt.Errorf("invalid oplog")
+}
+
+func generateDeleteSQL(oplogObj OplogEntry) (string,error){
+	switch oplogObj.Op{
+	case "d":
+		sql := fmt.Sprintf("DELETE FROM %s WHERE", oplogObj.NS)
+
+		whereColValues := make([]string,0, len(oplogObj.O))
+		for columnName,value := range oplogObj.O{
+			whereColValues = append(whereColValues, fmt.Sprintf("%s = %s", columnName, getColumnValue(value)))
+		}
+
+		sql = fmt.Sprintf("%s %s;", sql, strings.Join(whereColValues," AND "))
+
+		return sql,nil
+	}
+
+	return "",fmt.Errorf("invalid oplog")
 }
 
 
