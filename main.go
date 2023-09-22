@@ -18,21 +18,52 @@ type OplogEntry struct{
 	O2	map[string]interface{}	`json:"o2"`
 }
 
-func GenerateSQL(oplog string) ([]string,error){
+func GenerateSQL(oplog string) ([]string, error) {
+	sqls := []string{}
+
+	var oplogEntries []OplogEntry
+	if err := json.Unmarshal([]byte(oplog), &oplogEntries); err != nil {
+
+		var oplogObj OplogEntry
+		if err := json.Unmarshal([]byte(oplog), &oplogObj); err != nil {
+			return sqls, err
+		}
+
+		oplogEntries = append(oplogEntries, oplogObj)
+	}
+
+	cacheMap := make(map[string]bool)
+	for _, oplogEntry := range oplogEntries {
+		innerSqls, err := generateSQL(oplogEntry, cacheMap)
+		if err != nil {
+			return []string{}, err
+		}
+		sqls = append(sqls, innerSqls...)
+	}
+
+	return sqls, nil
+}
+
+func generateSQL(oplogObj OplogEntry, cacheMap map[string]bool) ([]string,error){
 
 	sqls:= []string{}
-
-	var oplogObj OplogEntry
-	if err := json.Unmarshal([]byte(oplog), &oplogObj); err!=nil{
-		return sqls,err
-	}
 
 	switch oplogObj.Op{
 	case "i":
 
-		sqls = generateSchemaSQL(oplogObj,sqls)
+		// Create schema
+		nsParts := strings.Split(oplogObj.NS, ".")
+		schemaName := nsParts[0]
+		if exists := cacheMap[schemaName]; !exists{
+			sqls = append(sqls, generateSchemaSQL(schemaName))
+			cacheMap[schemaName] = true
+		}
 
-		sqls = append(sqls, generateCreateTableSQL(oplogObj))
+		// Create table
+		if exists := cacheMap[oplogObj.NS]; !exists{
+			sqls = append(sqls, generateCreateTableSQL(oplogObj))
+			cacheMap[oplogObj.NS] = true
+		}
 
 		sql,err := generateInsertSQL(oplogObj)
 		if err!=nil{
@@ -56,10 +87,8 @@ func GenerateSQL(oplog string) ([]string,error){
 	return sqls,nil
 }
 
-func generateSchemaSQL(oplogObj OplogEntry, sqls []string) []string{
-	nsParts := strings.Split(oplogObj.NS,".")
-	sqls = append(sqls, fmt.Sprintf("CREATE SCHEMA %s;",nsParts[0]))
-	return sqls
+func generateSchemaSQL(schemaName string) string{
+	return fmt.Sprintf("CREATE SCHEMA %s;", schemaName)
 }
 
 func generateCreateTableSQL(oplogObj OplogEntry) string {
